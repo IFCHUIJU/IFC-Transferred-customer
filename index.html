@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="apple-touch-icon" href="icon.png">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+        }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IFC 이관고객 관리 시스템</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 배경 제거를 위한 핵심 CSS */
+        .logo-blend { mix-blend-mode: multiply; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans">
+
+    <div id="authContainer" class="max-w-md mx-auto my-12 bg-white p-8 rounded-2xl shadow-md border border-slate-200">
+        <div class="mb-6 flex justify-center">
+            <img src="icon.png" alt="IFC 로고" class="w-56 h-auto logo-blend">
+        </div>
+        <h2 class="text-2xl font-black text-slate-800 mb-6 text-center">이관고객 로그인</h2>
+        <input type="email" id="authEmail" placeholder="이메일" class="w-full px-4 py-2.5 mb-3 rounded-xl border border-slate-200">
+        <input type="password" id="authPassword" placeholder="비밀번호" class="w-full px-4 py-2.5 mb-3 rounded-xl border border-slate-200">
+        <div class="flex gap-2">
+            <button id="btnLogin" class="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">로그인</button>
+            <button id="btnSignUp" class="flex-1 bg-slate-200 text-slate-700 font-bold py-3 rounded-xl">회원가입</button>
+        </div>
+    </div>
+
+    <div id="editModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-lg shadow-xl">
+            <h3 class="font-bold text-lg mb-4">고객 정보 수정</h3>
+            <form id="editForm" class="space-y-3">
+                <input type="hidden" id="editId">
+                <div><label class="text-xs font-bold text-slate-500">계약자</label><input type="text" id="editName" class="w-full p-2 border rounded"></div>
+                <div><label class="text-xs font-bold text-slate-500">피보험자</label><input type="text" id="editInsured" class="w-full p-2 border rounded"></div>
+                <div><label class="text-xs font-bold text-slate-500">보험사</label><input type="text" id="editCompany" class="w-full p-2 border rounded"></div>
+                <div><label class="text-xs font-bold text-slate-500">보험료</label><input type="number" id="editPremium" class="w-full p-2 border rounded"></div>
+                <div><label class="text-xs font-bold text-slate-500">카드번호</label><input type="text" id="editCard" class="w-full p-2 border rounded"></div>
+                <div><label class="text-xs font-bold text-slate-500">유효기간</label><input type="text" id="editExpiry" class="w-full p-2 border rounded" placeholder="예: 2606"></div>
+                <div><label class="text-xs font-bold text-slate-500">결제일</label><input type="number" id="editPaymentDay" class="w-full p-2 border rounded"></div>
+                <div class="flex gap-2 mt-4">
+                    <button type="submit" class="flex-1 bg-indigo-600 text-white p-2 rounded font-bold">수정완료</button>
+                    <button type="button" onclick="document.getElementById('editModal').classList.add('hidden')" class="flex-1 bg-slate-300 p-2 rounded">취소</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="appContainer" class="max-w-3xl mx-auto hidden">
+        <header class="mb-8 text-center">
+            <div class="flex justify-center items-center gap-3 mb-2">
+                <img src="icon.png" alt="IFC 로고" class="w-64 h-24 object-contain logo-blend">
+            </div>
+            <h1 class="text-2xl font-black text-slate-800">IFC 이관고객 관리 시스템</h1>
+            <div class="mt-4">
+                <button id="btnLogout" class="text-xs bg-red-50 text-red-600 px-4 py-1.5 rounded-full font-bold">로그아웃</button>
+            </div>
+        </header>
+
+        <div class="flex bg-white rounded-xl p-1.5 border border-slate-200 mb-6 gap-1 text-sm">
+            <button onclick="switchTab('register')" class="flex-1 py-3 font-bold rounded-lg bg-indigo-600 text-white" id="btnTabRegister">등록</button>
+            <button onclick="switchTab('list')" class="flex-1 py-3 font-bold rounded-lg text-slate-500" id="btnTabList">이관고객 명단</button>
+            <button onclick="switchTab('today')" class="flex-1 py-3 font-bold rounded-lg text-slate-500" id="btnTabToday">당일 결제 <span id="todayCount" class="bg-red-100 text-red-600 px-1.5 rounded-md ml-1">0</span></button>
+        </div>
+
+        <div id="tabContentRegister" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <form id="customerForm" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-xs font-bold text-slate-500">계약자 *</label><input type="text" id="name" required class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                    <div><label class="text-xs font-bold text-slate-500">피보험자</label><input type="text" id="insured" class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-xs font-bold text-slate-500">연락처</label><input type="tel" id="phone" class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                    <div><label class="text-xs font-bold text-slate-500">보험사</label><input type="text" id="company" class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="text-xs font-bold text-slate-500">결제방법</label>
+                        <select id="paymentMethod" onchange="toggleCardFields()" class="w-full px-4 py-2 rounded-xl border border-slate-200">
+                            <option value="방문수금">방문수금</option><option value="카드등록">카드등록</option><option value="자동이체">자동이체</option>
+                        </select>
+                    </div>
+                    <div><label class="text-xs font-bold text-slate-500">보험료</label><input type="number" id="premium" class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                </div>
+                <div><label class="text-xs font-bold text-slate-500">결제일</label><input type="number" id="paymentDay" class="w-full px-4 py-2 rounded-xl border border-slate-200"></div>
+                <div id="cardFields" class="grid grid-cols-2 gap-4">
+                    <input type="text" id="cardNumber" placeholder="카드번호" class="w-full px-4 py-2 rounded-xl border border-slate-200">
+                    <input type="text" id="cardExpiry" placeholder="유효기간(YYMM)" class="w-full px-4 py-2 rounded-xl border border-slate-200">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">저장하기</button>
+            </form>
+        </div>
+
+        <div id="tabContentList" class="hidden">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 mb-4 flex justify-between font-bold text-slate-700">
+                <span id="statsLabel">총 0명 / 0건</span>
+                <input type="text" id="searchKeyword" placeholder="고객명 검색..." class="w-1/3 px-2 border-b border-slate-300 outline-none text-sm font-normal">
+            </div>
+            <div id="customerList" class="space-y-4"></div>
+        </div>
+        <div id="tabContentToday" class="hidden space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, where, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyDyo34lzqF1OM1fIOj6t-KAkKgVi4xeUTc", authDomain: "my-crm2-app.firebaseapp.com", projectId: "my-crm2-app", storageBucket: "my-crm2-app.firebasestorage.app", messagingSenderId: "781568660478", appId: "1:781568660478:web:cd57bd6052edad5803e6af" };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        let currentUser = null;
+        let allCustomers = [];
+
+        window.formatExpiry = (val) => (!val || val.length !== 4) ? val : `${val.substring(0, 2)}년 ${val.substring(2, 4)}월`;
+        window.deleteData = async (id) => { if(confirm("삭제할까요?")) await deleteDoc(doc(db, "customers", id)); };
+        
+        // 로그아웃 수정 부분
+        document.getElementById('btnLogout').addEventListener('click', async () => {
+            await signOut(auth);
+            location.reload();
+        });
+
+        // 나머지 기능 코드는 이전과 동일합니다.
+        window.openEditModal = (p) => {
+            document.getElementById('editId').value = p.id;
+            document.getElementById('editName').value = p.name;
+            document.getElementById('editInsured').value = p.insured;
+            document.getElementById('editCompany').value = p.company;
+            document.getElementById('editPremium').value = p.premium;
+            document.getElementById('editCard').value = p.cardNumber;
+            document.getElementById('editExpiry').value = p.cardExpiry;
+            document.getElementById('editPaymentDay').value = p.paymentDay || "";
+            document.getElementById('editModal').classList.remove('hidden');
+        };
+
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const editId = document.getElementById('editId').value;
+            await updateDoc(doc(db, "customers", editId), {
+                name: document.getElementById('editName').value,
+                insured: document.getElementById('editInsured').value,
+                company: document.getElementById('editCompany').value,
+                premium: document.getElementById('editPremium').value,
+                cardNumber: document.getElementById('editCard').value,
+                cardExpiry: document.getElementById('editExpiry').value,
+                paymentDay: document.getElementById('editPaymentDay').value
+            });
+            document.getElementById('editModal').classList.add('hidden');
+            renderList(document.getElementById('searchKeyword').value);
+        });
+
+        window.updateAlarms = () => {
+            const today = new Date().getDate();
+            const count = allCustomers.filter(c => parseInt(c.paymentDay) === today).length;
+            const badge = document.getElementById('alarmBadge');
+            const counter = document.getElementById('todayCount');
+            counter.innerText = count;
+            if(count > 0) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+        };
+
+        window.switchTab = (tab) => {
+            document.getElementById('tabContentRegister').classList.toggle('hidden', tab !== 'register');
+            document.getElementById('tabContentList').classList.toggle('hidden', tab !== 'list');
+            document.getElementById('tabContentToday').classList.toggle('hidden', tab !== 'today');
+            if(tab === 'today') renderToday();
+        };
+
+        window.renderToday = () => {
+            const today = new Date().getDate();
+            const todayCustomers = allCustomers.filter(c => parseInt(c.paymentDay) === today);
+            document.getElementById('tabContentToday').innerHTML = todayCustomers.length ? todayCustomers.map(c => `
+                <div class="bg-white p-5 rounded-2xl border shadow-sm">
+                    <h3 class="font-black text-lg">${c.name}</h3>
+                    <p class="text-sm">보험사: ${c.company} | 결제일: ${c.paymentDay}일</p>
+                </div>
+            `).join('') : '<p class="text-center py-10">결제 예정자가 없습니다.</p>';
+        };
+
+        window.renderList = (keyword = "") => {
+            const filtered = allCustomers.filter(c => c.name.includes(keyword));
+            document.getElementById('statsLabel').innerText = `총 ${filtered.length}명`;
+            document.getElementById('customerList').innerHTML = filtered.map(c => `
+                <div class="bg-white p-5 rounded-2xl border shadow-sm flex justify-between items-center">
+                    <div>
+                        <h3 class="font-black text-lg text-slate-800">${c.name}</h3>
+                        <p class="text-xs text-slate-500">${c.company} | ${c.paymentDay}일</p>
+                    </div>
+                    <button onclick="deleteData('${c.id}')" class="text-red-500"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `).join('');
+            updateAlarms();
+        };
+
+        document.getElementById('customerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await addDoc(collection(db, "customers"), {
+                uid: currentUser.uid, name: document.getElementById('name').value, 
+                insured: document.getElementById('insured').value, phone: document.getElementById('phone').value, 
+                company: document.getElementById('company').value, premium: document.getElementById('premium').value, 
+                paymentMethod: document.getElementById('paymentMethod').value, paymentDay: document.getElementById('paymentDay').value,
+                cardNumber: document.getElementById('cardNumber').value, cardExpiry: document.getElementById('cardExpiry').value
+            });
+            alert('저장되었습니다!'); e.target.reset();
+        });
+
+        onAuthStateChanged(auth, (u) => {
+            if (u) {
+                currentUser = u;
+                document.getElementById('authContainer').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+                onSnapshot(query(collection(db, "customers"), where("uid", "==", u.uid)), (snap) => {
+                    allCustomers = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    renderList();
+                });
+            }
+        });
+
+        document.getElementById('btnLogin').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
+        document.getElementById('btnSignUp').onclick = () => createUserWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
+        window.toggleCardFields = () => document.getElementById('cardFields').classList.toggle('hidden', document.getElementById('paymentMethod').value !== '방문수금');
+    </script>
+</body>
+</html>
