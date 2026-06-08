@@ -2,7 +2,6 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
     <link rel="apple-touch-icon" href="icon-192.png">
@@ -11,18 +10,15 @@
             navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
         }
     </script>
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IFC 이관고객 관리 시스템</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <style>
         .logo-blend { mix-blend-mode: multiply; }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans">
-
     <div id="authContainer" class="max-w-md mx-auto my-12 bg-white p-8 rounded-2xl shadow-md border border-slate-200">
         <div class="mb-6 flex justify-center">
             <img src="icon.png" alt="IFC 로고" class="w-56 h-auto logo-img">
@@ -126,6 +122,38 @@
         let currentUser = null;
         let allCustomers = [];
 
+        window.getCurrentMonth = () => {
+            const now = new Date();
+            return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+        };
+
+        window.isThisMonthPaid = (p) => {
+            return p.isPaid && p.lastPaidDate === getCurrentMonth();
+        };
+
+        window.togglePayment = async (p) => {
+            event.target.innerText = "처리 중...";
+            event.target.classList.add('opacity-50');
+
+            const now = new Date();
+            const ym = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+            
+            try {
+                await updateDoc(doc(db, "customers", p.id), { 
+                    isPaid: !isThisMonthPaid(p), 
+                    lastPaidDate: !isThisMonthPaid(p) ? ym : "" 
+                });
+                
+                renderList(document.getElementById('searchKeyword')?.value || "");
+                renderToday(); 
+                updateAlarms();
+            } catch (error) {
+                alert("처리에 실패했습니다. 다시 시도해주세요.");
+                event.target.innerText = isThisMonthPaid(p) ? '결제완료' : '결제대기';
+                event.target.classList.remove('opacity-50');
+            }
+        };
+
         window.formatExpiry = (val) => (!val || val.length !== 4) ? val : `${val.substring(0, 2)}년 ${val.substring(2, 4)}월`;
         window.deleteData = async (id) => { if(confirm("삭제할까요?")) await deleteDoc(doc(db, "customers", id)); };
         
@@ -160,13 +188,13 @@
 
         window.updateAlarms = () => {
             const today = new Date().getDate();
-            const count = allCustomers.filter(c => parseInt(c.paymentDay) === today).length;
+            const overdue = allCustomers.filter(c => Number(c.paymentDay) <= today && !isThisMonthPaid(c));
             const badge = document.getElementById('alarmBadge');
             const counter = document.getElementById('todayCount');
-            counter.innerText = count;
-            if(count > 0) {
+            counter.innerText = overdue.length;
+            if(overdue.length > 0) {
                 badge.classList.remove('hidden');
-                badge.innerText = `오늘 ${count}건`;
+                badge.innerText = `!`;
             } else {
                 badge.classList.add('hidden');
             }
@@ -184,7 +212,7 @@
 
         window.renderToday = () => {
             const today = new Date().getDate();
-            const todayCustomers = allCustomers.filter(c => parseInt(c.paymentDay) === today);
+            const todayCustomers = allCustomers.filter(c => Number(c.paymentDay) <= today && !isThisMonthPaid(c));
             const grouped = {};
             todayCustomers.forEach(c => {
                 const key = `${c.name}_${c.phone}`;
@@ -204,10 +232,13 @@
                                 <p class="mt-1 text-xs bg-white p-1 rounded border">
                                     카드번호: <b>${p.cardNumber || '-'}</b> | 유효기간: <b>${formatExpiry(p.cardExpiry) || '-'}</b>
                                 </p>` : ''}
+                            <button onclick='togglePayment(${JSON.stringify(p).replace(/'/g, "&apos;")})' class="mt-2 text-xs font-bold px-3 py-1 rounded-full ${isThisMonthPaid(p) ? 'bg-green-500 text-white' : 'bg-slate-200'}">
+                                ${isThisMonthPaid(p) ? '결제완료' : '결제대기'}
+                            </button>
                         </div>
                     `).join('')}
                 </div>
-            `).join('') : '<p class="text-center text-slate-500 py-10">오늘 결제 예정인 고객이 없습니다.</p>';
+            `).join('') : '<p class="text-center text-slate-500 py-10">현재 미납된 고객이 없습니다.</p>';
         };
 
         window.renderList = (keyword = "") => {
@@ -237,6 +268,9 @@
                             <div class="mt-2 pt-2 border-t border-slate-200">
                                 <p>결제방법: <span class="font-bold text-indigo-600">${p.paymentMethod}</span> (${p.paymentDay}일)</p>
                                 <p class="text-slate-600">카드번호: <b>${p.cardNumber || '-'}</b> | 유효기간: <b>${formatExpiry(p.cardExpiry) || '-'}</b></p>
+                                <button onclick='togglePayment(${JSON.stringify(p).replace(/'/g, "&apos;")})' class="mt-2 text-xs font-bold px-3 py-1 rounded-full ${isThisMonthPaid(p) ? 'bg-green-500 text-white' : 'bg-slate-200'}">
+                                    ${isThisMonthPaid(p) ? '결제완료' : '결제대기'}
+                                </button>
                             </div>
                         </div>`).join('')}
                 </div>`).join('');
@@ -250,7 +284,7 @@
                 phone: document.getElementById('phone').value, company: document.getElementById('company').value,
                 premium: document.getElementById('premium').value, paymentMethod: document.getElementById('paymentMethod').value,
                 paymentDay: document.getElementById('paymentDay').value, cardNumber: document.getElementById('cardNumber').value,
-                cardExpiry: document.getElementById('cardExpiry').value
+                cardExpiry: document.getElementById('cardExpiry').value, isPaid: false, lastPaidDate: ""
             });
             alert('저장되었습니다!'); e.target.reset(); toggleCardFields();
         });
@@ -270,10 +304,10 @@
         document.getElementById('btnLogin').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
         document.getElementById('btnSignUp').onclick = () => createUserWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
         document.getElementById('btnLogout').onclick = () => {
-    signOut(auth).then(() => {
-        window.location.reload(); // 로그아웃 성공 시 페이지를 새로고침하여 인증 상태 초기화
-    });
-};
+            signOut(auth).then(() => {
+                window.location.reload(); 
+            });
+        };
         document.getElementById('searchKeyword').oninput = (e) => renderList(e.target.value);
         window.toggleCardFields = () => document.getElementById('cardFields').classList.toggle('hidden', document.getElementById('paymentMethod').value !== '방문수금');
     </script>
