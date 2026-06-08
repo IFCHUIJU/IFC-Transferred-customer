@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
     <link rel="apple-touch-icon" href="icon.png">
@@ -10,12 +11,13 @@
             navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
         }
     </script>
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IFC 이관고객 관리 시스템</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
-        /* 배경 제거를 위한 핵심 CSS */
         .logo-blend { mix-blend-mode: multiply; }
     </style>
 </head>
@@ -23,7 +25,7 @@
 
     <div id="authContainer" class="max-w-md mx-auto my-12 bg-white p-8 rounded-2xl shadow-md border border-slate-200">
         <div class="mb-6 flex justify-center">
-            <img src="icon.png" alt="IFC 로고" class="w-56 h-auto logo-blend">
+            <img src="icon.png" alt="IFC 로고" class="w-56 h-auto logo-img">
         </div>
         <h2 class="text-2xl font-black text-slate-800 mb-6 text-center">이관고객 로그인</h2>
         <input type="email" id="authEmail" placeholder="이메일" class="w-full px-4 py-2.5 mb-3 rounded-xl border border-slate-200">
@@ -59,7 +61,10 @@
             <div class="flex justify-center items-center gap-3 mb-2">
                 <img src="icon.png" alt="IFC 로고" class="w-64 h-24 object-contain logo-blend">
             </div>
-            <h1 class="text-2xl font-black text-slate-800">IFC 이관고객 관리 시스템</h1>
+            <h1 class="text-2xl font-black text-slate-800">
+                IFC 이관고객 관리 시스템
+                <span id="alarmBadge" onclick="switchTab('today')" class="hidden ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full cursor-pointer animate-pulse">!</span>
+            </h1>
             <div class="mt-4">
                 <button id="btnLogout" class="text-xs bg-red-50 text-red-600 px-4 py-1.5 rounded-full font-bold">로그아웃</button>
             </div>
@@ -105,6 +110,7 @@
             </div>
             <div id="customerList" class="space-y-4"></div>
         </div>
+
         <div id="tabContentToday" class="hidden space-y-4"></div>
     </div>
 
@@ -123,13 +129,6 @@
         window.formatExpiry = (val) => (!val || val.length !== 4) ? val : `${val.substring(0, 2)}년 ${val.substring(2, 4)}월`;
         window.deleteData = async (id) => { if(confirm("삭제할까요?")) await deleteDoc(doc(db, "customers", id)); };
         
-        // 로그아웃 수정 부분
-        document.getElementById('btnLogout').addEventListener('click', async () => {
-            await signOut(auth);
-            location.reload();
-        });
-
-        // 나머지 기능 코드는 이전과 동일합니다.
         window.openEditModal = (p) => {
             document.getElementById('editId').value = p.id;
             document.getElementById('editName').value = p.name;
@@ -155,6 +154,7 @@
                 paymentDay: document.getElementById('editPaymentDay').value
             });
             document.getElementById('editModal').classList.add('hidden');
+            alert('수정되었습니다!');
             renderList(document.getElementById('searchKeyword').value);
         });
 
@@ -164,53 +164,95 @@
             const badge = document.getElementById('alarmBadge');
             const counter = document.getElementById('todayCount');
             counter.innerText = count;
-            if(count > 0) badge.classList.remove('hidden');
-            else badge.classList.add('hidden');
+            if(count > 0) {
+                badge.classList.remove('hidden');
+                badge.innerText = `오늘 ${count}건`;
+            } else {
+                badge.classList.add('hidden');
+            }
         };
 
         window.switchTab = (tab) => {
             document.getElementById('tabContentRegister').classList.toggle('hidden', tab !== 'register');
             document.getElementById('tabContentList').classList.toggle('hidden', tab !== 'list');
             document.getElementById('tabContentToday').classList.toggle('hidden', tab !== 'today');
+            ['register', 'list', 'today'].forEach(t => {
+                document.getElementById('btnTab' + t.charAt(0).toUpperCase() + t.slice(1)).className = (tab === t) ? "flex-1 py-3 font-bold rounded-lg bg-indigo-600 text-white" : "flex-1 py-3 font-bold rounded-lg text-slate-500";
+            });
             if(tab === 'today') renderToday();
         };
 
         window.renderToday = () => {
             const today = new Date().getDate();
             const todayCustomers = allCustomers.filter(c => parseInt(c.paymentDay) === today);
-            document.getElementById('tabContentToday').innerHTML = todayCustomers.length ? todayCustomers.map(c => `
+            const grouped = {};
+            todayCustomers.forEach(c => {
+                const key = `${c.name}_${c.phone}`;
+                if (!grouped[key]) grouped[key] = { ...c, policies: [] };
+                grouped[key].policies.push(c);
+            });
+
+            const entries = Object.values(grouped);
+            document.getElementById('tabContentToday').innerHTML = entries.length ? entries.map(c => `
                 <div class="bg-white p-5 rounded-2xl border shadow-sm">
-                    <h3 class="font-black text-lg">${c.name}</h3>
-                    <p class="text-sm">보험사: ${c.company} | 결제일: ${c.paymentDay}일</p>
+                    <h3 class="font-black text-lg text-slate-800 mb-2">${c.name} <span class="text-xs text-slate-400 font-normal">${c.phone}</span></h3>
+                    ${c.policies.map(p => `
+                        <div class="mt-3 p-4 bg-slate-50 rounded-xl text-sm border border-slate-100">
+                            <p class="font-bold text-indigo-600">보험사: ${p.company ? p.company : '미입력'} | 결제일: ${p.paymentDay}일</p>
+                            <p>피보험자: ${p.insured || '-'} | 결제방법: ${p.paymentMethod}</p>
+                            ${p.paymentMethod === '방문수금' ? `
+                                <p class="mt-1 text-xs bg-white p-1 rounded border">
+                                    카드번호: <b>${p.cardNumber || '-'}</b> | 유효기간: <b>${formatExpiry(p.cardExpiry) || '-'}</b>
+                                </p>` : ''}
+                        </div>
+                    `).join('')}
                 </div>
-            `).join('') : '<p class="text-center py-10">결제 예정자가 없습니다.</p>';
+            `).join('') : '<p class="text-center text-slate-500 py-10">오늘 결제 예정인 고객이 없습니다.</p>';
         };
 
         window.renderList = (keyword = "") => {
-            const filtered = allCustomers.filter(c => c.name.includes(keyword));
-            document.getElementById('statsLabel').innerText = `총 ${filtered.length}명`;
-            document.getElementById('customerList').innerHTML = filtered.map(c => `
-                <div class="bg-white p-5 rounded-2xl border shadow-sm flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black text-lg text-slate-800">${c.name}</h3>
-                        <p class="text-xs text-slate-500">${c.company} | ${c.paymentDay}일</p>
-                    </div>
-                    <button onclick="deleteData('${c.id}')" class="text-red-500"><i class="fa-solid fa-trash"></i></button>
-                </div>
-            `).join('');
+            const grouped = {};
+            allCustomers.forEach(c => {
+                if (c.name.includes(keyword)) {
+                    const key = `${c.name}_${c.phone}`;
+                    if (!grouped[key]) grouped[key] = { ...c, policies: [] };
+                    grouped[key].policies.push(c);
+                }
+            });
+            const entries = Object.values(grouped);
+            document.getElementById('statsLabel').innerText = `총 ${entries.length}명 / ${entries.reduce((a,c) => a + c.policies.length, 0)}건`;
+            document.getElementById('customerList').innerHTML = entries.map(c => `
+                <div class="bg-white p-5 rounded-2xl border shadow-sm">
+                    <h3 class="font-black text-lg text-slate-800 mb-2">${c.name} <span class="text-xs text-slate-400 font-normal">${c.phone}</span></h3>
+                    ${c.policies.map(p => `
+                        <div class="mt-3 p-4 bg-slate-50 rounded-xl text-sm border border-slate-100 relative">
+                            <div class="absolute top-2 right-2 flex gap-2">
+                                <button onclick='openEditModal(${JSON.stringify(p).replace(/'/g, "&apos;")})' class="text-blue-500"><i class="fa-solid fa-pen-to-square"></i></button>
+                                <button onclick="deleteData('${p.id}')" class="text-red-500"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <p>계약자: <b>${p.name}</b></p><p>피보험자: <b>${p.insured || '-'}</b></p>
+                                <p>보험사: <b>${p.company || '-'}</b></p><p>보험료: <b>${parseInt(p.premium||0).toLocaleString()}원</b></p>
+                            </div>
+                            <div class="mt-2 pt-2 border-t border-slate-200">
+                                <p>결제방법: <span class="font-bold text-indigo-600">${p.paymentMethod}</span> (${p.paymentDay}일)</p>
+                                <p class="text-slate-600">카드번호: <b>${p.cardNumber || '-'}</b> | 유효기간: <b>${formatExpiry(p.cardExpiry) || '-'}</b></p>
+                            </div>
+                        </div>`).join('')}
+                </div>`).join('');
             updateAlarms();
         };
 
         document.getElementById('customerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             await addDoc(collection(db, "customers"), {
-                uid: currentUser.uid, name: document.getElementById('name').value, 
-                insured: document.getElementById('insured').value, phone: document.getElementById('phone').value, 
-                company: document.getElementById('company').value, premium: document.getElementById('premium').value, 
-                paymentMethod: document.getElementById('paymentMethod').value, paymentDay: document.getElementById('paymentDay').value,
-                cardNumber: document.getElementById('cardNumber').value, cardExpiry: document.getElementById('cardExpiry').value
+                uid: currentUser.uid, name: document.getElementById('name').value, insured: document.getElementById('insured').value,
+                phone: document.getElementById('phone').value, company: document.getElementById('company').value,
+                premium: document.getElementById('premium').value, paymentMethod: document.getElementById('paymentMethod').value,
+                paymentDay: document.getElementById('paymentDay').value, cardNumber: document.getElementById('cardNumber').value,
+                cardExpiry: document.getElementById('cardExpiry').value
             });
-            alert('저장되었습니다!'); e.target.reset();
+            alert('저장되었습니다!'); e.target.reset(); toggleCardFields();
         });
 
         onAuthStateChanged(auth, (u) => {
@@ -227,6 +269,12 @@
 
         document.getElementById('btnLogin').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
         document.getElementById('btnSignUp').onclick = () => createUserWithEmailAndPassword(auth, document.getElementById('authEmail').value, document.getElementById('authPassword').value);
+        document.getElementById('btnLogout').onclick = () => {
+    signOut(auth).then(() => {
+        window.location.reload(); // 로그아웃 성공 시 페이지를 새로고침하여 인증 상태 초기화
+    });
+};
+        document.getElementById('searchKeyword').oninput = (e) => renderList(e.target.value);
         window.toggleCardFields = () => document.getElementById('cardFields').classList.toggle('hidden', document.getElementById('paymentMethod').value !== '방문수금');
     </script>
 </body>
